@@ -1,0 +1,8 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-table-urls
+      author: alionaVr
+      changes:
+        - sqlFile:
+            path: ../sql/create-table-urls.sql
+            relativeToChangelogFile: true
