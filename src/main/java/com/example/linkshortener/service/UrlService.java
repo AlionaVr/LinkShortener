@@ -8,85 +8,101 @@ import com.example.linkshortener.exception.GenerationShortCodeException;
 import com.example.linkshortener.exception.UrlExpiredException;
 import com.example.linkshortener.exception.UrlNotFoundException;
 import com.example.linkshortener.repository.UrlRepository;
+import com.example.linkshortener.util.ShortCodeGenerator;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
-import java.security.SecureRandom;
 import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
 public class UrlService {
 
-    private static final String CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    private static final int CODE_LENGTH = 8;
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final int MAX_ATTEMPTS = 10;
 
     private final UrlRepository urlRepository;
+    private final ShortCodeGenerator shortCodeGenerator;
 
-    @Value("${app.base-url}")
-    private String baseUrl;
+    @Transactional(readOnly = true)
+    public String getOriginalUrl(String shortCode) {
+        Url url = urlRepository.findByShortCode(shortCode)
+                .orElseThrow(() -> new UrlNotFoundException("Short code not found: " + shortCode));
+
+        if (url.getExpiresAt() != null && url.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new UrlExpiredException("Short code has expired: " + shortCode);
+        }
+        return url.getOriginalUrl();
+    }
 
     @Transactional
     public UrlResponse createShortUrl(UrlRequest request) {
-        String shortUrl;
-
         if (request.getAlias() != null && !request.getAlias().isBlank()) {
-            if (urlRepository.existsByShortUrl(request.getAlias())) {
+            return createWithAlias(request);
+        }
+        return createWithGeneratedCode(request);
+    }
+
+    private UrlResponse createWithAlias(UrlRequest request) {
+        try {
+            return saveAndBuildResponse(request.getAlias(), request);
+        } catch (DataIntegrityViolationException e) {
+            if (isDuplicateKeyViolation(e)) {
                 throw new AliasAlreadyExistException("Alias already exist: " + request.getAlias());
             }
-            shortUrl = request.getAlias();
-        } else {
-            shortUrl = generateUniqueCode();
+            throw e; // NOT NULL, FK violation
         }
+    }
+
+    private UrlResponse createWithGeneratedCode(UrlRequest request) {
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                return saveAndBuildResponse(shortCodeGenerator.generate(), request);
+            } catch (DataIntegrityViolationException e) {
+                if (!isDuplicateKeyViolation(e)) {
+                    throw e;
+                }
+                if (attempt == MAX_ATTEMPTS) {
+                    throw new GenerationShortCodeException(
+                            "Failed to generate unique short code after " + MAX_ATTEMPTS + " attempts"
+                    );
+                }
+            }
+        }
+        throw new GenerationShortCodeException("Failed to generate unique short code");
+    }
+
+    private UrlResponse saveAndBuildResponse(String shortCode,
+                                             UrlRequest request) {
 
         Url url = Url.builder()
-                .shortUrl(shortUrl)
+                .shortCode(shortCode)
                 .originalUrl(request.getOriginalUrl())
                 .expiresAt(request.getTtlSeconds() != null
                         ? LocalDateTime.now().plusSeconds(request.getTtlSeconds())
                         : null)
                 .build();
 
-        urlRepository.save(url);
+        urlRepository.saveAndFlush(url);
 
         return UrlResponse.builder()
-                .shortUrl(baseUrl + "/" + shortUrl)
+                .shortUrl(buildShortUrl(shortCode))
                 .originalUrl(request.getOriginalUrl())
                 .build();
     }
 
-    @Transactional(readOnly = true)
-    public String getOriginalUrl(String shortUrl) {
-        Url url = urlRepository.findByShortUrl(shortUrl)
-                .orElseThrow(() -> new UrlNotFoundException("Short URL not found: " + shortUrl));
-
-        if (url.getExpiresAt() != null && url.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new UrlExpiredException("Short URL has expired: " + shortUrl);
-        }
-        return url.getOriginalUrl();
+    protected String buildShortUrl(String shortCode) {
+        return ServletUriComponentsBuilder
+                .fromCurrentRequest()
+                .replacePath(null)
+                .pathSegment(shortCode)
+                .toUriString();
     }
 
-    private String generateUniqueCode() {
-        String code;
-        int attempts = 0;
-        do {
-            code = generateCode();
-            attempts++;
-            if (attempts > 10) {
-                throw new GenerationShortCodeException("Failed to generate unique short code after 10 attempts");
-            }
-        } while (urlRepository.existsByShortUrl(code));
-        return code;
-    }
-
-    private String generateCode() {
-        StringBuilder sb = new StringBuilder(CODE_LENGTH);
-        for (int i = 0; i < CODE_LENGTH; i++) {
-            sb.append(CHARS.charAt(RANDOM.nextInt(CHARS.length())));
-        }
-        return sb.toString();
+    private boolean isDuplicateKeyViolation(DataIntegrityViolationException e) {
+        String msg = e.getMostSpecificCause().getMessage();
+        return msg != null && msg.toLowerCase().contains("duplicate");
     }
 }

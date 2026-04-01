@@ -29,20 +29,21 @@ A simple URL shortening service similar to TinyURL, built with Spring Boot and P
 
 ### API Endpoints
 
-* `POST /api/shorten` - Create a shortened URL.
+* `POST /shorten` - Create a shortened URL.
     * Request Body:
       ```json
       {
-        "longUrl": "https://www.example.com/some/very/long/url",
-        "customAlias": "myalias", // Optional
-        "ttl": 3600 // Optional, in seconds
+        "originalUrl": "https://www.google.com",
+        "alias": "mygoogle3",
+        "ttlSeconds": 1
       }
       ```
-        * Response:
-          ```json
-          {
-            "shortUrl": "http://short.url/myalias"
-          }
-          ```
-* `GET /{shortUrl}` - Redirect to the original long URL.
+    * Response:
+      ```json
+        {
+        "originalUrl": "https://www.google.com",
+        "shortUrl": "http://localhost:8080/mygoogle3"
+        }
+        ```
+* `GET /{shortCode}` - Redirect to the original long URL.
 

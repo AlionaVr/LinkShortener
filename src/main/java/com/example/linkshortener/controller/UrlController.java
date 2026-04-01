@@ -28,9 +28,9 @@ public class UrlController {
         return ResponseEntity.ok(urlResponse);
     }
 
-    @GetMapping("/{shortUrl}")
-    public ResponseEntity<Void> redirectToOriginalUrl(@PathVariable String shortUrl) {
-        String originalUrl = urlService.getOriginalUrl(shortUrl);
+    @GetMapping("/{shortCode}")
+    public ResponseEntity<Void> redirectToOriginalUrl(@PathVariable String shortCode) {
+        String originalUrl = urlService.getOriginalUrl(shortCode);
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, originalUrl)
                 .build();

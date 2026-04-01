@@ -74,6 +74,7 @@ class UrlControllerIntegrationTest {
         request.setAlias("mygoogle");
 
         mockMvc.perform(post("/shorten")
+                        .header("Host", "localhost:8080")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -127,7 +128,7 @@ class UrlControllerIntegrationTest {
     @Test
     void redirect_whenExpired_shouldReturn410() throws Exception {
         Url expiredUrl = Url.builder()
-                .shortUrl("expired")
+                .shortCode("expired")
                 .originalUrl("https://expired.com")
                 .expiresAt(LocalDateTime.now().minusHours(1))
                 .build();
@@ -136,7 +137,7 @@ class UrlControllerIntegrationTest {
 
         mockMvc.perform(get("/expired"))
                 .andExpect(status().isGone())
-                .andExpect(jsonPath("$.message").value("Short URL has expired: expired"));
+                .andExpect(jsonPath("$.message").value("Short code has expired: expired"));
     }
 
     @Test
