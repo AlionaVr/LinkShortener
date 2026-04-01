@@ -1,0 +1,8 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-view-active-urls
+      author: alionaVr
+      changes:
+        - sqlFile:
+            path: ../sql/create-view-active-urls.sql
+            relativeToChangelogFile: true
